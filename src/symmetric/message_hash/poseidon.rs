@@ -1,8 +1,12 @@
 use zkhash::ark_ff::One;
 use zkhash::ark_ff::UniformRand;
+use zkhash::ark_ff::PrimeField;
 use zkhash::fields::babybear::FpBabyBear;
+use zkhash::fields::babybear::FqConfig;
+use zkhash::ark_ff::MontConfig;
 use zkhash::poseidon2::poseidon2::Poseidon2;
 use zkhash::poseidon2::poseidon2_instance_babybear::POSEIDON2_BABYBEAR_24_PARAMS;
+use num_bigint::BigUint;
 
 use crate::symmetric::tweak_hash::poseidon::poseidon_compress;
 use crate::MESSAGE_LENGTH;
@@ -13,9 +17,21 @@ use super::MessageHash;
 type F = FpBabyBear;
 
 /// Function to encode a message as a vector of field elements
-fn encode_message(message: &[u8; MESSAGE_LENGTH]) -> Vec<F> {
+fn encode_message<const HASH_LEN_FE: usize>(message: &[u8; MESSAGE_LENGTH]) -> [F;HASH_LEN_FE] {
     // TODO: this needs to be implemented properly
-    vec![]
+    let mut msg_uint =  message.iter()
+        .fold(BigUint::ZERO, |acc, &item|{
+        acc*BigUint::from(256 as u32)+item
+    }); //collect the vector into a number
+
+    let mut msg_felts: [F;HASH_LEN_FE] = [F::from(0);HASH_LEN_FE];
+    msg_felts.iter_mut()
+        .fold(msg_uint, |acc,  item|{  
+        let tmp = acc.clone()% BigUint::from(FqConfig::MODULUS);
+        *item = F::from(tmp.clone());
+        (acc-tmp)/(256 as u32) 
+    }); //interpreting the number base-p
+    msg_felts
 }
 
 /// Function to encode an epoch (= tweak in the message hash)
@@ -89,7 +105,7 @@ impl<
         let instance = Poseidon2::new(&POSEIDON2_BABYBEAR_24_PARAMS);
 
         // first, encode the message and the epoch as field elements
-        let message_fe = encode_message(message);
+        let message_fe = encode_message::<HASH_LEN_FE>(message);
         let epoch_fe = encode_epoch(epoch);
 
         // now, we hash parameters, epoch, message, randomness using PoseidonCompress
