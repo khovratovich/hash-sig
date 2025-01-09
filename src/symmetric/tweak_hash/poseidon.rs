@@ -119,14 +119,41 @@ pub fn poseidon_compress<const OUT_LEN: usize>(
     output
 }
 
+
+//Construct a domain separator based on @params array of usize treated as u32. 
+//It should fit the Poseidon instance 
+
 pub fn poseidon_safe_domain_separator<const OUT_LEN: usize>(
     instance: &Poseidon2<F>,
-    params: &[usize]
+    params: &[usize]  
 )
 -> [F; OUT_LEN] { 
+    let state_bits = f64::log2(
+        BigUint::from(FqConfig::MODULUS)
+        .to_string()
+        .parse()
+        .unwrap())*f64::from(instance.get_t() as u32);
+    assert!(state_bits>=f64::from((params.len()*32) as u32), "Parameter mismatch: not enough field elements to hash the domain separator");
 
-    [F::one(); OUT_LEN] 
+
+
+    let domain_uint =  params.iter()
+        .fold(BigUint::ZERO, |acc, &item|{
+        acc*BigUint::from(((1 as u64)<<32) as u64)+(item as u32)
+    }); //collect the vector into a number
+
+    //Creating a Poseidon input
+    let mut input = vec![F::from(0); instance.get_t()];
+    input.iter_mut()
+        .fold(domain_uint, |acc,  item|{  
+        let tmp = acc.clone()% BigUint::from(FqConfig::MODULUS);
+        *item = F::from(tmp.clone());
+        (acc-tmp)/(BigUint::from(FqConfig::MODULUS)) 
+    }); //interpreting the number base-p
+    poseidon_compress::<OUT_LEN>(instance, &input)
 }
+
+
 //Poseidon Sponge hash
 //Takes input of arbitrary length 
 //Capacity must hold an appropriate domain separator, e.g. hash of the lengths
@@ -165,8 +192,7 @@ pub fn poseidon_sponge<const OUT_LEN: usize>(
         instance.permutation(&state);
     }
     let slice = &out[0..OUT_LEN];
-    let mut result: [F; OUT_LEN] = slice.try_into().expect("Length mismatch");
-    result
+    slice.try_into().expect("Length mismatch") 
 }
 
 
@@ -283,7 +309,6 @@ impl<
             return poseidon_compress::<HASH_LEN>(&instance, &combined_input);
         }
         if l > 2 {
-            // TODO: implement Sponge mode
             let tweak_fe = PoseidonTweak::to_field_elements::<TWEAK_LEN>(tweak);
             let  combined_input: Vec<F> = parameter
             .iter()

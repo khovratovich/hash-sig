@@ -45,7 +45,7 @@ fn encode_epoch<const TWEAK_LEN_FE: usize>(epoch: u32) ->[F;TWEAK_LEN_FE] {
         .to_string()
         .parse()
         .unwrap())*f64::from(TWEAK_LEN_FE as u32);
-    assert!(input_bits<=f64::from((32+8 as u32)), "Parameter mismatch: not enough field elements to encode the epoch tweak");
+    assert!(input_bits<=f64::from(32+8 as u32), "Parameter mismatch: not enough field elements to encode the epoch tweak");
 
     
     let epoch_uint =  BigUint::from(epoch)<<8+crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
