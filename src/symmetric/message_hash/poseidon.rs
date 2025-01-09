@@ -1,3 +1,5 @@
+ 
+
 use zkhash::ark_ff::One;
 use zkhash::ark_ff::UniformRand;
 use zkhash::ark_ff::PrimeField;
@@ -36,8 +38,16 @@ fn encode_message<const MSG_LEN_FE: usize>(message: &[u8; MESSAGE_LENGTH]) -> [F
 /// Function to encode an epoch (= tweak in the message hash)
 /// as a vector of field elements.
 /// 
-/// TODO: check that the output is big enough to hold the input
 fn encode_epoch<const TWEAK_LEN_FE: usize>(epoch: u32) ->[F;TWEAK_LEN_FE] {
+    //checking if we fit
+    let input_bits = f64::log2(
+        BigUint::from(FqConfig::MODULUS)
+        .to_string()
+        .parse()
+        .unwrap())*f64::from(TWEAK_LEN_FE as u32);
+    assert!(input_bits<=f64::from((32+8 as u32)), "Parameter mismatch: not enough field elements to encode the epoch tweak");
+
+    
     let epoch_uint =  BigUint::from(epoch)<<8+crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
      //collect the vector into a number
 
@@ -54,10 +64,17 @@ fn encode_epoch<const TWEAK_LEN_FE: usize>(epoch: u32) ->[F;TWEAK_LEN_FE] {
 /// Function to decode a vector of field elements into
 /// a vector of NUM_CHUNKS many chunks. One chunk is
 /// between 0 and 2^CHUNK_SIZE - 1 (inclusive).
-/// TODO: check that the output is big enough to hold the input
 fn decode_to_chunks<const NUM_CHUNKS: usize, const CHUNK_SIZE: usize, const HASH_LEN_FE: usize>(
-    field_elements: &[F],
+    field_elements: &[F; HASH_LEN_FE],
 ) -> Vec<u8> {
+    //checking if we fit 
+    let input_bits = f64::log2(
+        BigUint::from(FqConfig::MODULUS)
+        .to_string()
+        .parse()
+        .unwrap())*f64::from(HASH_LEN_FE as u32);
+    assert!(input_bits<=f64::from((NUM_CHUNKS*CHUNK_SIZE) as u32), "Parameter mismatch: not enough chunks to decode the hash");
+
     let hash_uint =  field_elements.iter()
         .fold(BigUint::ZERO, |acc, &item|{
         acc*BigUint::from(FqConfig::MODULUS)+BigUint::from(item.into_bigint())

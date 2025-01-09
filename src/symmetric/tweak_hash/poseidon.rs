@@ -1,4 +1,4 @@
-use std::default;
+
 
 use zkhash::ark_ff::One;
 use zkhash::ark_ff::UniformRand;
@@ -65,7 +65,7 @@ impl<const LOG_LIFETIME: usize, const CEIL_LOG_NUM_CHAINS: usize, const CHUNK_SI
                 + (BigUint::from(*pos_in_chain)<<8)
                 +crate::TWEAK_SEPARATOR_FOR_CHAIN_HASH
             }
-            default=>{
+            _=>{
                 BigUint::from(0 as u32)
             }
         };
@@ -119,6 +119,62 @@ pub fn poseidon_compress<const OUT_LEN: usize>(
     output
 }
 
+pub fn poseidon_safe_domain_separator<const OUT_LEN: usize>(
+    instance: &Poseidon2<F>,
+    params: &[usize]
+)
+-> [F; OUT_LEN] { 
+
+    [F::one(); OUT_LEN] 
+}
+//Poseidon Sponge hash
+//Takes input of arbitrary length 
+//Capacity must hold an appropriate domain separator, e.g. hash of the lengths
+pub fn poseidon_sponge<const OUT_LEN: usize>(
+    instance: &Poseidon2<F>,
+    capacity_value: &[F],
+    input: &[F],
+) -> [F; OUT_LEN] { 
+    //capacity must be shorter than the width
+    assert!(
+        capacity_value.len() < instance.get_t(),
+        "Poseidon Sponge: Capacity must be smaller than the state size."
+    );
+     
+    let rate = instance.get_t()-capacity_value.len();
+
+
+    let extra_elements = (rate-(input.len()%rate))%rate;
+    let mut input_vector = input.to_vec().clone();
+    input_vector.extend(std::iter::repeat(F::zero()).take(extra_elements));//padding with 0s
+
+    //Initialize
+    let mut state = vec![F::zero();rate];
+    state.extend_from_slice(capacity_value);
+    //Absorb
+    for chunk in input_vector.chunks(rate){
+        for i in 0..chunk.len(){
+            state[i] = state[i]+chunk[i];
+            instance.permutation(&state);
+        }
+    }
+    //Squeeze
+    let mut  out = vec![];
+    while(out.len()<OUT_LEN){
+        out.extend_from_slice(&state[..rate]);
+        instance.permutation(&state);
+    }
+    let slice = &out[0..OUT_LEN];
+    let mut result: [F; OUT_LEN] = slice.try_into().expect("Length mismatch");
+    result
+}
+
+
+
+    
+
+
+
 /// A tweakable hash function implemented using Poseidon2
 ///
 /// Note: HASH_LEN and PARAMETER_LEN must be given in
@@ -130,6 +186,8 @@ pub struct PoseidonTweakHash<
     const PARAMETER_LEN: usize,
     const HASH_LEN: usize,
     const TWEAK_LEN: usize,
+    const CAPACITY: usize,
+    const NUM_CHUNKS: usize,
 >;
 
 impl<
@@ -139,8 +197,10 @@ impl<
         const PARAMETER_LEN: usize,
         const HASH_LEN: usize,
         const TWEAK_LEN: usize,
+        const CAPACITY: usize,
+        const NUM_CHUNKS: usize,
     > TweakableHash
-    for PoseidonTweakHash<LOG_LIFETIME, CEIL_LOG_NUM_CHAINS, CHUNK_SIZE, PARAMETER_LEN, HASH_LEN, TWEAK_LEN>
+    for PoseidonTweakHash<LOG_LIFETIME, CEIL_LOG_NUM_CHAINS, CHUNK_SIZE, PARAMETER_LEN, HASH_LEN, TWEAK_LEN, CAPACITY, NUM_CHUNKS>
 {
     type Parameter = [F; PARAMETER_LEN];
 
@@ -224,7 +284,18 @@ impl<
         }
         if l > 2 {
             // TODO: implement Sponge mode
-            return [F::one(); HASH_LEN];
+            let tweak_fe = PoseidonTweak::to_field_elements::<TWEAK_LEN>(tweak);
+            let  combined_input: Vec<F> = parameter
+            .iter()
+            .chain(tweak_fe.iter())
+            .chain(message.iter().flat_map(|sub_arr| sub_arr.iter())) 
+            .cloned()
+            .collect();
+            let lengths= [PARAMETER_LEN,TWEAK_LEN,NUM_CHUNKS,HASH_LEN];
+            let safe_input = poseidon_safe_domain_separator::<CAPACITY>(&instance, &lengths);
+            let capacity_value = poseidon_compress::<CAPACITY>(&instance, &safe_input);
+            let res = poseidon_sponge(&instance, &capacity_value, &combined_input);
+            return res;
         }
         // will never be reached
         [F::one(); HASH_LEN]
@@ -232,8 +303,8 @@ impl<
 }
 
 // Example instantiations
-pub type PoseidonTweak44 = PoseidonTweakHash<20, 8, 2, 4, 4,3>;
-pub type PoseidonTweak37 = PoseidonTweakHash<20, 8, 2, 3, 7,3>;
+pub type PoseidonTweak44 = PoseidonTweakHash<20, 8, 2, 4, 4,3,9,128>;
+pub type PoseidonTweak37 = PoseidonTweakHash<20, 8, 2, 3, 7,3,9,128>;
 
 #[cfg(test)]
 mod tests {
@@ -257,6 +328,12 @@ mod tests {
         let message_one = PoseidonTweak44::rand_domain(&mut rng);
         let tweak_chain = PoseidonTweak44::chain_tweak(2, 3, 4);
         PoseidonTweak44::apply(&parameter, &tweak_chain, &[message_one]);
+
+         // test that nothing is panicking
+         let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+         let chains = [PoseidonTweak44::rand_domain(&mut rng);128];
+         let tweak_tree = PoseidonTweak44::tree_tweak(0, 3);
+         PoseidonTweak44::apply(&parameter, &tweak_tree, &chains);
     }
 
     #[test]
