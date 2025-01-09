@@ -74,7 +74,7 @@ impl<MH: MessageHash, const NUM_CHUNKS_CHECKSUM: usize> IncomparableEncoding
         let mut chunks = Vec::with_capacity(chunks_message.len() + NUM_CHUNKS_CHECKSUM);
         chunks.extend_from_slice(&chunks_message);
         chunks.extend_from_slice(&chunks_checksum[..NUM_CHUNKS_CHECKSUM]);
-        let chunks_u32: Vec<u16> = chunks.iter().map(|&x| x as u16).collect();
-        Ok(chunks_u32)
+        let chunks_u16: Vec<u16> = chunks.iter().map(|&x| x as u16).collect();
+        Ok(chunks_u16)
     }
 }

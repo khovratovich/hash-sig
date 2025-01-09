@@ -1,11 +1,12 @@
-
-
+use zkhash::ark_ff::MontConfig;
 use zkhash::ark_ff::One;
 use zkhash::ark_ff::UniformRand;
 use zkhash::ark_ff::Zero;
-use zkhash::ark_ff::MontConfig;
 use zkhash::poseidon2::poseidon2_instance_babybear::POSEIDON2_BABYBEAR_24_PARAMS;
-use zkhash::{fields::babybear::{FpBabyBear,FqConfig}, poseidon2::poseidon2::Poseidon2};
+use zkhash::{
+    fields::babybear::{FpBabyBear, FqConfig},
+    poseidon2::poseidon2::Poseidon2,
+};
 
 use num_bigint::BigUint;
 
@@ -38,7 +39,6 @@ impl<const LOG_LIFETIME: usize, const CEIL_LOG_NUM_CHAINS: usize, const CHUNK_SI
     //const TWEAK_LEN: usize = 6;
 
     fn to_field_elements<const TWEAK_LEN: usize>(&self) -> Vec<F> {
-        // TODO: implement tweaks properly
         // we need to convert from integers to field elements,
         // Note: taking into account the constants
         // LOG_LIFETIME, CEIL_LOG_NUM_CHAINS, CHUNK_SIZE,
@@ -51,33 +51,29 @@ impl<const LOG_LIFETIME: usize, const CEIL_LOG_NUM_CHAINS: usize, const CHUNK_SI
                 level,
                 pos_in_level,
             } => {
-                (BigUint::from(*level)<<40)
-                + (BigUint::from(*pos_in_level)<<8)
-                +crate::TWEAK_SEPARATOR_FOR_TREE_HASH
+                (BigUint::from(*level) << 40)
+                    + (BigUint::from(*pos_in_level) << 8)
+                    + crate::TWEAK_SEPARATOR_FOR_TREE_HASH
             }
             PoseidonTweak::ChainTweak {
                 epoch,
                 chain_index,
                 pos_in_chain,
             } => {
-                (BigUint::from(*epoch)<<40)
-                + (BigUint::from(*chain_index)<<24) 
-                + (BigUint::from(*pos_in_chain)<<8)
-                +crate::TWEAK_SEPARATOR_FOR_CHAIN_HASH
+                (BigUint::from(*epoch) << 40)
+                    + (BigUint::from(*chain_index) << 24)
+                    + (BigUint::from(*pos_in_chain) << 8)
+                    + crate::TWEAK_SEPARATOR_FOR_CHAIN_HASH
             }
-            _=>{
-                BigUint::from(0 as u32)
-            }
+            _ => BigUint::from(0 as u32),
         };
-        let mut tweak_fe: [F;TWEAK_LEN] = [F::from(0);TWEAK_LEN];
-        tweak_fe.iter_mut()
-            .fold(tweak_bigint, |acc,  item|{  
-            let tmp = acc.clone()% BigUint::from(FqConfig::MODULUS);
+        let mut tweak_fe: [F; TWEAK_LEN] = [F::zero(); TWEAK_LEN];
+        tweak_fe.iter_mut().fold(tweak_bigint, |acc, item| {
+            let tmp = acc.clone() % BigUint::from(FqConfig::MODULUS);
             *item = F::from(tmp.clone());
-            (acc-tmp)/(BigUint::from(FqConfig::MODULUS)) 
+            (acc - tmp) / (BigUint::from(FqConfig::MODULUS))
         }); //interpreting the number base-p
         tweak_fe.to_vec()
-        
     }
 }
 
@@ -119,87 +115,77 @@ pub fn poseidon_compress<const OUT_LEN: usize>(
     output
 }
 
-
-//Construct a domain separator based on @params array of usize treated as u32. 
-//It should fit the Poseidon instance 
+///Construct a domain separator based on @params array of usize treated as u32.
+///It should fit the Poseidon instance
 
 pub fn poseidon_safe_domain_separator<const OUT_LEN: usize>(
     instance: &Poseidon2<F>,
-    params: &[usize]  
-)
--> [F; OUT_LEN] { 
+    params: &[usize],
+) -> [F; OUT_LEN] {
     let state_bits = f64::log2(
         BigUint::from(FqConfig::MODULUS)
-        .to_string()
-        .parse()
-        .unwrap())*f64::from(instance.get_t() as u32);
-    assert!(state_bits>=f64::from((params.len()*32) as u32), "Parameter mismatch: not enough field elements to hash the domain separator");
+            .to_string()
+            .parse()
+            .unwrap(),
+    ) * f64::from(instance.get_t() as u32);
+    assert!(
+        state_bits >= f64::from((params.len() * 32) as u32),
+        "Parameter mismatch: not enough field elements to hash the domain separator"
+    );
 
-
-
-    let domain_uint =  params.iter()
-        .fold(BigUint::ZERO, |acc, &item|{
-        acc*BigUint::from(((1 as u64)<<32) as u64)+(item as u32)
+    let domain_uint = params.iter().fold(BigUint::ZERO, |acc, &item| {
+        acc * BigUint::from(((1 as u64) << 32) as u64) + (item as u32)
     }); //collect the vector into a number
 
     //Creating a Poseidon input
-    let mut input = vec![F::from(0); instance.get_t()];
-    input.iter_mut()
-        .fold(domain_uint, |acc,  item|{  
-        let tmp = acc.clone()% BigUint::from(FqConfig::MODULUS);
+    let mut input = vec![F::zero(); instance.get_t()];
+    input.iter_mut().fold(domain_uint, |acc, item| {
+        let tmp = acc.clone() % BigUint::from(FqConfig::MODULUS);
         *item = F::from(tmp.clone());
-        (acc-tmp)/(BigUint::from(FqConfig::MODULUS)) 
+        (acc - tmp) / (BigUint::from(FqConfig::MODULUS))
     }); //interpreting the number base-p
     poseidon_compress::<OUT_LEN>(instance, &input)
 }
 
-
-//Poseidon Sponge hash
-//Takes input of arbitrary length 
-//Capacity must hold an appropriate domain separator, e.g. hash of the lengths
+///Poseidon Sponge hash
+///Takes input of arbitrary length
+///Capacity must hold an appropriate domain separator, e.g. hash of the lengths
 pub fn poseidon_sponge<const OUT_LEN: usize>(
     instance: &Poseidon2<F>,
     capacity_value: &[F],
     input: &[F],
-) -> [F; OUT_LEN] { 
+) -> [F; OUT_LEN] {
     //capacity must be shorter than the width
     assert!(
         capacity_value.len() < instance.get_t(),
         "Poseidon Sponge: Capacity must be smaller than the state size."
     );
-     
-    let rate = instance.get_t()-capacity_value.len();
 
+    let rate = instance.get_t() - capacity_value.len();
 
-    let extra_elements = (rate-(input.len()%rate))%rate;
+    let extra_elements = (rate - (input.len() % rate)) % rate;
     let mut input_vector = input.to_vec().clone();
-    input_vector.extend(std::iter::repeat(F::zero()).take(extra_elements));//padding with 0s
+    input_vector.resize_with(extra_elements, F::zero); //padding with 0s
 
     //Initialize
-    let mut state = vec![F::zero();rate];
+    let mut state = vec![F::zero(); rate];
     state.extend_from_slice(capacity_value);
     //Absorb
-    for chunk in input_vector.chunks(rate){
-        for i in 0..chunk.len(){
-            state[i] = state[i]+chunk[i];
+    for chunk in input_vector.chunks(rate) {
+        for i in 0..chunk.len() {
+            state[i] = state[i] + chunk[i];
             instance.permutation(&state);
         }
     }
     //Squeeze
-    let mut  out = vec![];
-    while(out.len()<OUT_LEN){
+    let mut out = vec![];
+    while out.len() < OUT_LEN {
         out.extend_from_slice(&state[..rate]);
         instance.permutation(&state);
     }
     let slice = &out[0..OUT_LEN];
-    slice.try_into().expect("Length mismatch") 
+    slice.try_into().expect("Length mismatch")
 }
-
-
-
-    
-
-
 
 /// A tweakable hash function implemented using Poseidon2
 ///
@@ -226,7 +212,16 @@ impl<
         const CAPACITY: usize,
         const NUM_CHUNKS: usize,
     > TweakableHash
-    for PoseidonTweakHash<LOG_LIFETIME, CEIL_LOG_NUM_CHAINS, CHUNK_SIZE, PARAMETER_LEN, HASH_LEN, TWEAK_LEN, CAPACITY, NUM_CHUNKS>
+    for PoseidonTweakHash<
+        LOG_LIFETIME,
+        CEIL_LOG_NUM_CHAINS,
+        CHUNK_SIZE,
+        PARAMETER_LEN,
+        HASH_LEN,
+        TWEAK_LEN,
+        CAPACITY,
+        NUM_CHUNKS,
+    >
 {
     type Parameter = [F; PARAMETER_LEN];
 
@@ -310,13 +305,13 @@ impl<
         }
         if l > 2 {
             let tweak_fe = PoseidonTweak::to_field_elements::<TWEAK_LEN>(tweak);
-            let  combined_input: Vec<F> = parameter
-            .iter()
-            .chain(tweak_fe.iter())
-            .chain(message.iter().flat_map(|sub_arr| sub_arr.iter())) 
-            .cloned()
-            .collect();
-            let lengths= [PARAMETER_LEN,TWEAK_LEN,NUM_CHUNKS,HASH_LEN];
+            let combined_input: Vec<F> = parameter
+                .iter()
+                .chain(tweak_fe.iter())
+                .chain(message.iter().flat_map(|sub_arr| sub_arr.iter()))
+                .cloned()
+                .collect();
+            let lengths = [PARAMETER_LEN, TWEAK_LEN, NUM_CHUNKS, HASH_LEN];
             let safe_input = poseidon_safe_domain_separator::<CAPACITY>(&instance, &lengths);
             let capacity_value = poseidon_compress::<CAPACITY>(&instance, &safe_input);
             let res = poseidon_sponge(&instance, &capacity_value, &combined_input);
@@ -328,8 +323,8 @@ impl<
 }
 
 // Example instantiations
-pub type PoseidonTweak44 = PoseidonTweakHash<20, 8, 2, 4, 4,3,9,128>;
-pub type PoseidonTweak37 = PoseidonTweakHash<20, 8, 2, 3, 7,3,9,128>;
+pub type PoseidonTweak44 = PoseidonTweakHash<20, 8, 2, 4, 4, 3, 9, 128>;
+pub type PoseidonTweak37 = PoseidonTweakHash<20, 8, 2, 3, 7, 3, 9, 128>;
 
 #[cfg(test)]
 mod tests {
@@ -354,11 +349,11 @@ mod tests {
         let tweak_chain = PoseidonTweak44::chain_tweak(2, 3, 4);
         PoseidonTweak44::apply(&parameter, &tweak_chain, &[message_one]);
 
-         // test that nothing is panicking
-         let parameter = PoseidonTweak44::rand_parameter(&mut rng);
-         let chains = [PoseidonTweak44::rand_domain(&mut rng);128];
-         let tweak_tree = PoseidonTweak44::tree_tweak(0, 3);
-         PoseidonTweak44::apply(&parameter, &tweak_tree, &chains);
+        // test that nothing is panicking
+        let parameter = PoseidonTweak44::rand_parameter(&mut rng);
+        let chains = [PoseidonTweak44::rand_domain(&mut rng); 128];
+        let tweak_tree = PoseidonTweak44::tree_tweak(0, 3);
+        PoseidonTweak44::apply(&parameter, &tweak_tree, &chains);
     }
 
     #[test]
