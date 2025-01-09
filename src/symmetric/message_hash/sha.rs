@@ -2,14 +2,14 @@ use crate::{symmetric::message_hash::bytes_to_chunks, MESSAGE_LENGTH};
 
 use super::MessageHash;
 
-use sha2::{Digest, Sha256};
+use sha3::{Digest, Sha3_256};
 
-/// A message hash implemented using SHA-256
+/// A message hash implemented using SHA3
 /// All lengths must be given in Bytes.
 /// All lengths must be less than 255 bits.
 /// Randomness length must be non-zero.
 /// CHUNK_SIZE has to be 1,2,4, or 8.
-pub struct Sha256MessageHash<
+pub struct ShaMessageHash<
     const PARAMETER_LEN: usize,
     const RAND_LEN: usize,
     const NUM_CHUNKS: usize,
@@ -21,7 +21,7 @@ impl<
         const RAND_LEN: usize,
         const NUM_CHUNKS: usize,
         const CHUNK_SIZE: usize,
-    > MessageHash for Sha256MessageHash<PARAMETER_LEN, RAND_LEN, NUM_CHUNKS, CHUNK_SIZE>
+    > MessageHash for ShaMessageHash<PARAMETER_LEN, RAND_LEN, NUM_CHUNKS, CHUNK_SIZE>
 {
     type Parameter = [u8; PARAMETER_LEN];
 
@@ -42,8 +42,9 @@ impl<
         epoch: u32,
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
-    ) -> Vec<u8> {
+    ) -> Vec<u8> { 
         let mut hasher = Sha256::new();
+ 
 
         // now add the parameter
         hasher.update(parameter);
@@ -53,9 +54,6 @@ impl<
         // So we start with a 0x02 byte.
         hasher.update(&[0x02]);
         hasher.update(epoch.to_le_bytes());
-
-        // now add randomness
-        hasher.update(randomness);
 
         // now add the actual message to be hashed
         hasher.update(message);
@@ -89,8 +87,8 @@ impl<
 }
 
 // Example instantiations
-pub type Sha256MessageHash128x3 = Sha256MessageHash<16, 16, 16, 8>;
-pub type Sha256MessageHash192x3 = Sha256MessageHash<24, 24, 48, 4>;
+pub type ShaMessageHash128x3 = ShaMessageHash<16, 16, 16, 8>;
+pub type ShaMessageHash192x3 = ShaMessageHash<24, 24, 48, 4>;
 
 #[cfg(test)]
 mod tests {
@@ -111,10 +109,10 @@ mod tests {
         rng.fill(&mut message);
 
         let epoch = 13;
-        let randomness = Sha256MessageHash128x3::rand(&mut rng);
-
+        let randomness = ShaMessageHash128x3::rand(&mut rng);
+ 
         Sha256MessageHash128x3::consistency_check();
-        Sha256MessageHash128x3::apply(&parameter, epoch, &randomness, &message);
+        Sha256MessageHash128x3::apply(&parameter, epoch, &randomness, &message); 
     }
 
     #[test]
@@ -128,9 +126,9 @@ mod tests {
         rng.fill(&mut message);
 
         let epoch = 13;
-        let randomness = Sha256MessageHash192x3::rand(&mut rng);
-
+        let randomness = ShaMessageHash192x3::rand(&mut rng);
+ 
         Sha256MessageHash192x3::consistency_check();
-        Sha256MessageHash192x3::apply(&parameter, epoch, &randomness, &message);
+        Sha256MessageHash192x3::apply(&parameter, epoch, &randomness, &message); 
     }
 }

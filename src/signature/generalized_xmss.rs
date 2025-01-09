@@ -283,9 +283,9 @@ mod tests {
         inc_encoding::{basic_winternitz::WinternitzEncoding, target_sum::TargetSumEncoding},
         signature::test_templates::_test_signature_scheme_correctness,
         symmetric::{
-            message_hash::{sha::Sha256MessageHash192x3, MessageHash},
-            prf::hashprf::Sha256PRF,
-            tweak_hash::sha::Sha256Tweak192192,
+            message_hash::{sha::ShaMessageHash192x3, MessageHash},
+            prf::hashprf::ShaPRF,
+            tweak_hash::sha::ShaTweak192192,
         },
     };
 
@@ -294,9 +294,9 @@ mod tests {
     #[test]
     pub fn test_correctness_winternitz() {
         // Note: do not use these parameters, they are just for testing
-        type PRF = Sha256PRF<24>;
-        type TH = Sha256Tweak192192;
-        type MH = Sha256MessageHash192x3;
+        type PRF = ShaPRF<24>;
+        type TH = ShaTweak192192;
+        type MH = ShaMessageHash192x3;
         const _CHUNK_SIZE: usize = 2;
         const NUM_CHUNKS_CHECKSUM: usize = 3;
         type IE = WinternitzEncoding<MH, NUM_CHUNKS_CHECKSUM>;
@@ -313,9 +313,9 @@ mod tests {
     #[test]
     pub fn test_correctness_target_sum() {
         // Note: do not use these parameters, they are just for testing
-        type PRF = Sha256PRF<24>;
-        type TH = Sha256Tweak192192;
-        type MH = Sha256MessageHash192x3;
+        type PRF = ShaPRF<24>;
+        type TH = ShaTweak192192;
+        type MH = ShaMessageHash192x3;
         const CHUNK_SIZE: usize = MH::CHUNK_SIZE;
         const NUM_CHUNKS: usize = MH::NUM_CHUNKS;
         const MAX_CHUNK_VALUE: usize = (1 << CHUNK_SIZE) - 1;

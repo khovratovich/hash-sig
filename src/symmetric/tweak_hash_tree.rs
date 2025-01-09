@@ -173,11 +173,11 @@ mod tests {
 
     use rand::thread_rng;
 
-    use crate::symmetric::tweak_hash::sha::Sha256Tweak128192;
+    use crate::symmetric::tweak_hash::sha::ShaTweak128192;
 
     use super::*;
 
-    type TestTH = Sha256Tweak128192;
+    type TestTH = ShaTweak128192;
 
     #[test]
     fn test_commit_open_verify() {

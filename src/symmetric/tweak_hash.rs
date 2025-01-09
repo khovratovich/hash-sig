@@ -72,12 +72,12 @@ pub mod sha;
 
 #[cfg(test)]
 mod tests {
-    use sha::Sha256Tweak128192;
+    use sha::ShaTweak128192;
 
     use super::*;
     use rand::thread_rng;
 
-    type TestTH = Sha256Tweak128192;
+    type TestTH = ShaTweak128192;
 
     #[test]
     fn test_chain_associative() {

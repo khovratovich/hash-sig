@@ -1,16 +1,16 @@
 use super::Pseudorandom;
-use sha2::{Digest, Sha256};
+use sha3::{Digest, Sha3_256};
 
 const KEY_LENGTH: usize = 32; // 32 bytes
 const PRF_DOMAIN_SEP: [u8; 16] = [
     0x00, 0x01, 0x12, 0xff, 0x00, 0x01, 0xfa, 0xff, 0x00, 0xaf, 0x12, 0xff, 0x01, 0xfa, 0xff, 0x00,
 ];
 
-// Implement a SHA256-based PRF
+// Implement a SHA3-based PRF
 // Output Length must be at most 32 bytes
-pub struct Sha256PRF<const OUTPUT_LENGTH: usize>;
+pub struct ShaPRF<const OUTPUT_LENGTH: usize>;
 
-impl<const OUTPUT_LENGTH: usize> Pseudorandom for Sha256PRF<OUTPUT_LENGTH> {
+impl<const OUTPUT_LENGTH: usize> Pseudorandom for ShaPRF<OUTPUT_LENGTH> {
     type Key = [u8; KEY_LENGTH];
     type Output = [u8; OUTPUT_LENGTH];
 
@@ -26,7 +26,7 @@ impl<const OUTPUT_LENGTH: usize> Pseudorandom for Sha256PRF<OUTPUT_LENGTH> {
             "SHA256-PRF: Output length must be less than 256 bit"
         );
 
-        let mut hasher = Sha256::new();
+        let mut hasher = Sha3_256::new();
 
         // Hash the domain separator
         hasher.update(PRF_DOMAIN_SEP);
