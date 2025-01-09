@@ -16,13 +16,14 @@ use super::MessageHash;
 type F = FpBabyBear;
 
 /// Function to encode a message as a vector of field elements
-fn encode_message<const HASH_LEN_FE: usize>(message: &[u8; MESSAGE_LENGTH]) -> [F;HASH_LEN_FE] {
-     let mut msg_uint =  message.iter()
+/// TODO: check that the output is big enough to hold the input
+fn encode_message<const MSG_LEN_FE: usize>(message: &[u8; MESSAGE_LENGTH]) -> [F;MSG_LEN_FE] {
+     let msg_uint =  message.iter()
         .fold(BigUint::ZERO, |acc, &item|{
         acc*BigUint::from(256 as u32)+item
     }); //collect the vector into a number
 
-    let mut message_fe: [F;HASH_LEN_FE] = [F::from(0);HASH_LEN_FE];
+    let mut message_fe: [F;MSG_LEN_FE] = [F::from(0);MSG_LEN_FE];
     message_fe.iter_mut()
         .fold(msg_uint, |acc,  item|{  
         let tmp = acc.clone()% BigUint::from(FqConfig::MODULUS);
@@ -34,8 +35,10 @@ fn encode_message<const HASH_LEN_FE: usize>(message: &[u8; MESSAGE_LENGTH]) -> [
 
 /// Function to encode an epoch (= tweak in the message hash)
 /// as a vector of field elements.
+/// 
+/// TODO: check that the output is big enough to hold the input
 fn encode_epoch<const TWEAK_LEN_FE: usize>(epoch: u32) ->[F;TWEAK_LEN_FE] {
-    let mut epoch_uint =  BigUint::from(epoch)*(256 as u32)+crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
+    let epoch_uint =  BigUint::from(epoch)<<8+crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
      //collect the vector into a number
 
     let mut tweak_fe: [F;TWEAK_LEN_FE] = [F::from(0);TWEAK_LEN_FE];
@@ -51,10 +54,11 @@ fn encode_epoch<const TWEAK_LEN_FE: usize>(epoch: u32) ->[F;TWEAK_LEN_FE] {
 /// Function to decode a vector of field elements into
 /// a vector of NUM_CHUNKS many chunks. One chunk is
 /// between 0 and 2^CHUNK_SIZE - 1 (inclusive).
+/// TODO: check that the output is big enough to hold the input
 fn decode_to_chunks<const NUM_CHUNKS: usize, const CHUNK_SIZE: usize, const HASH_LEN_FE: usize>(
     field_elements: &[F],
 ) -> Vec<u8> {
-    let mut hash_uint =  field_elements.iter()
+    let hash_uint =  field_elements.iter()
         .fold(BigUint::ZERO, |acc, &item|{
         acc*BigUint::from(FqConfig::MODULUS)+BigUint::from(item.into_bigint())
     }); //collect the vector into a number
@@ -73,7 +77,7 @@ fn decode_to_chunks<const NUM_CHUNKS: usize, const CHUNK_SIZE: usize, const HASH
 
 /// A message hash implemented using Poseidon2
 ///
-/// Note: PARAMETER_LEN, RAND_LEN, and HASH_LEN_FE
+/// Note: PARAMETER_LEN, RAND_LEN, TWEAK_LEN_FE, MSG_LEN_FE, and HASH_LEN_FE
 /// must be given in the unit "number of field elements".
 ///
 /// HASH_LEN_FE specifies how many field elements the
@@ -86,7 +90,8 @@ pub struct PoseidonMessageHash<
     const HASH_LEN_FE: usize,
     const NUM_CHUNKS: usize,
     const CHUNK_SIZE: usize,
-    const TWEAK_LEN_FE: usize
+    const TWEAK_LEN_FE: usize,
+    const MSG_LEN_FE: usize,
 >;
 
 impl<
@@ -95,9 +100,11 @@ impl<
         const HASH_LEN_FE: usize,
         const NUM_CHUNKS: usize,
         const CHUNK_SIZE: usize,
-        const TWEAK_LEN_FE: usize
+        const TWEAK_LEN_FE: usize,
+        const MSG_LEN_FE: usize,
     > MessageHash
-    for PoseidonMessageHash<PARAMETER_LEN, RAND_LEN, HASH_LEN_FE, NUM_CHUNKS, CHUNK_SIZE,TWEAK_LEN_FE>
+    for PoseidonMessageHash<PARAMETER_LEN, RAND_LEN, HASH_LEN_FE, NUM_CHUNKS,
+         CHUNK_SIZE, TWEAK_LEN_FE, MSG_LEN_FE>
 {
     type Parameter = [F; PARAMETER_LEN];
 
@@ -121,13 +128,15 @@ impl<
         randomness: &Self::Randomness,
         message: &[u8; MESSAGE_LENGTH],
     ) -> Vec<u8> {
-        // TODO: we should assert that lengths small enough for Poseidon parameters
-
         // We need a Poseidon instance
+
+        //This block should be changed if we decide to support other Poseidon instances
+        //Currently we use state of width 24 and pad with 0s
+        assert!(PARAMETER_LEN+TWEAK_LEN_FE+RAND_LEN+HASH_LEN_FE<=24);
         let instance = Poseidon2::new(&POSEIDON2_BABYBEAR_24_PARAMS);
 
         // first, encode the message and the epoch as field elements
-        let message_fe = encode_message::<HASH_LEN_FE>(message);
+        let message_fe = encode_message::<MSG_LEN_FE>(message);
         let epoch_fe = encode_epoch::<TWEAK_LEN_FE>(epoch);
 
         // now, we hash parameters, epoch, message, randomness using PoseidonCompress
@@ -147,7 +156,7 @@ impl<
 
 // Example instantiations
 // TODO: check if this instantiation makes any sense
-pub type PoseidonMessageHash445 = PoseidonMessageHash<4, 4, 5, 128, 2,2>;
+pub type PoseidonMessageHash445 = PoseidonMessageHash<4, 4, 5, 128, 2,2,9>;
 
 #[cfg(test)]
 mod tests {
