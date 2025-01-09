@@ -18,8 +18,14 @@ use super::MessageHash;
 type F = FpBabyBear;
 
 /// Function to encode a message as a vector of field elements
-/// TODO: check that the output is big enough to hold the input
 fn encode_message<const MSG_LEN_FE: usize>(message: &[u8; MESSAGE_LENGTH]) -> [F;MSG_LEN_FE] {
+        //checking if we fit
+        let output_bits = f64::log2(
+            BigUint::from(FqConfig::MODULUS)
+            .to_string()
+            .parse()
+            .unwrap())*f64::from(MSG_LEN_FE as u32);
+        assert!(output_bits>=f64::from((8 as u32)*(MESSAGE_LENGTH as u32)), "Parameter mismatch: not enough field elements to encode the message");
      let msg_uint =  message.iter()
         .fold(BigUint::ZERO, |acc, &item|{
         acc*BigUint::from(256 as u32)+item
@@ -45,7 +51,7 @@ fn encode_epoch<const TWEAK_LEN_FE: usize>(epoch: u32) ->[F;TWEAK_LEN_FE] {
         .to_string()
         .parse()
         .unwrap())*f64::from(TWEAK_LEN_FE as u32);
-    assert!(input_bits<=f64::from(32+8 as u32), "Parameter mismatch: not enough field elements to encode the epoch tweak");
+    assert!(input_bits>=f64::from(32+8 as u32), "Parameter mismatch: not enough field elements to encode the epoch tweak");
 
     
     let epoch_uint =  BigUint::from(epoch)<<8+crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
