@@ -9,9 +9,7 @@ use zkhash::poseidon2::poseidon2_instance_babybear::POSEIDON2_BABYBEAR_24_PARAMS
 use num_bigint::BigUint;
 
 use crate::symmetric::tweak_hash::poseidon::poseidon_compress;
-use crate::MESSAGE_LENGTH;
-use crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
-
+use crate::MESSAGE_LENGTH; 
 use super::MessageHash;
 
 // TODO: Check if we want to use this field or a different one
@@ -24,20 +22,20 @@ fn encode_message<const HASH_LEN_FE: usize>(message: &[u8; MESSAGE_LENGTH]) -> [
         acc*BigUint::from(256 as u32)+item
     }); //collect the vector into a number
 
-    let mut msg_felts: [F;HASH_LEN_FE] = [F::from(0);HASH_LEN_FE];
-    msg_felts.iter_mut()
+    let mut message_fe: [F;HASH_LEN_FE] = [F::from(0);HASH_LEN_FE];
+    message_fe.iter_mut()
         .fold(msg_uint, |acc,  item|{  
         let tmp = acc.clone()% BigUint::from(FqConfig::MODULUS);
         *item = F::from(tmp.clone());
-        (acc-tmp)/(256 as u32) 
+        (acc-tmp)/(BigUint::from(FqConfig::MODULUS)) 
     }); //interpreting the number base-p
-    msg_felts
+    message_fe
 }
 
 /// Function to encode an epoch (= tweak in the message hash)
 /// as a vector of field elements.
 fn encode_epoch<const TWEAK_LEN_FE: usize>(epoch: u32) ->[F;TWEAK_LEN_FE] {
-    let mut epoch_uint =  BigUint::from(epoch)*(256 as u32)+TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
+    let mut epoch_uint =  BigUint::from(epoch)*(256 as u32)+crate::TWEAK_SEPARATOR_FOR_MESSAGE_HASH;
      //collect the vector into a number
 
     let mut tweak_fe: [F;TWEAK_LEN_FE] = [F::from(0);TWEAK_LEN_FE];
@@ -45,7 +43,7 @@ fn encode_epoch<const TWEAK_LEN_FE: usize>(epoch: u32) ->[F;TWEAK_LEN_FE] {
         .fold(epoch_uint, |acc,  item|{  
         let tmp = acc.clone()% BigUint::from(FqConfig::MODULUS);
         *item = F::from(tmp.clone());
-        (acc-tmp)/(256 as u32) 
+        (acc-tmp)/(BigUint::from(FqConfig::MODULUS))
     }); //interpreting the number base-p
     tweak_fe
 }
@@ -56,8 +54,21 @@ fn encode_epoch<const TWEAK_LEN_FE: usize>(epoch: u32) ->[F;TWEAK_LEN_FE] {
 fn decode_to_chunks<const NUM_CHUNKS: usize, const CHUNK_SIZE: usize, const HASH_LEN_FE: usize>(
     field_elements: &[F],
 ) -> Vec<u8> {
-    // TODO: this needs to be implemented properly
-    vec![]
+    let mut hash_uint =  field_elements.iter()
+        .fold(BigUint::ZERO, |acc, &item|{
+        acc*BigUint::from(FqConfig::MODULUS)+BigUint::from(item.into_bigint())
+    }); //collect the vector into a number
+
+    let chunk_len =  (1<<CHUNK_SIZE) as u8; 
+
+    let mut hash_chunked: [u8;NUM_CHUNKS] = [0 as u8;NUM_CHUNKS];
+    hash_chunked.iter_mut()
+        .fold(hash_uint, |acc,  item|{  
+        let tmp = acc.clone()% chunk_len;
+        *item = tmp.to_bytes_le()[0]%chunk_len;
+        (acc-tmp)/ chunk_len
+    }); //interpreting the number base-p
+    Vec::from(hash_chunked)
 }
 
 /// A message hash implemented using Poseidon2
@@ -136,7 +147,7 @@ impl<
 
 // Example instantiations
 // TODO: check if this instantiation makes any sense
-pub type PoseidonMessageHash445 = PoseidonMessageHash<4, 4, 5, 128, 2>;
+pub type PoseidonMessageHash445 = PoseidonMessageHash<4, 4, 5, 128, 2,2>;
 
 #[cfg(test)]
 mod tests {
